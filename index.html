@@ -223,16 +223,40 @@
 
     let html5QrCode = null;
     let isScanning = false;
-    const scannedTodaySet = new Set();
-    let lastScannedId = "";
-    let lastScanTime = 0;
+    let isSending = false;
+    let lastWarnId = "";
+    let lastWarnTime = 0;
+
+    function getTodayKey() {
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `bpc_scanned_${yyyy}-${mm}-${dd}`;
+    }
+
+    function getTodayScannedIds() {
+      try {
+        const raw = localStorage.getItem(getTodayKey());
+        return new Set(raw ? JSON.parse(raw) : []);
+      } catch (e) {
+        return new Set();
+      }
+    }
+
+    function saveTodayScannedId(studentId) {
+      try {
+        const set = getTodayScannedIds();
+        set.add(studentId);
+        localStorage.setItem(getTodayKey(), JSON.stringify([...set]));
+      } catch (e) {}
+    }
 
     function playSound(type = "success") {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
         if (type === "success") {
-          // মিষ্টি ডাবল-বিপ সাউন্ড
           const notes = [880, 1174.66];
           notes.forEach((freq, i) => {
             const osc = ctx.createOscillator();
@@ -248,7 +272,6 @@
           });
           setTimeout(() => ctx.close(), 350);
         } else {
-          // সতর্কতা/এরর বিপ
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = "triangle";
@@ -287,6 +310,7 @@
     }
 
     async function sendAttendance(studentId) {
+      isSending = true;
       setStatus("loading", `পাঠানো হচ্ছে: ${studentId}`, "Google Sheets আপডেট হচ্ছে...");
 
       try {
@@ -295,13 +319,13 @@
         const text = (await res.text()).trim();
         const lower = text.toLowerCase();
 
+        saveTodayScannedId(studentId);
+
         if (lower.includes("already scanned today")) {
-          scannedTodaySet.add(studentId);
           setStatus("warn", `আজ ইতিমধ্যে স্ক্যান হয়েছে: ${studentId}`, "একটি QR দিনে একবারই গণ্য হয়।");
           playSound("warn");
           addHistory(studentId, text, "warn");
         } else if (lower.includes("success")) {
-          scannedTodaySet.add(studentId);
           setStatus("success", `হাজিরা সম্পন্ন: ${studentId}`, text);
           playSound("success");
           addHistory(studentId, text, "success");
@@ -314,24 +338,29 @@
         setStatus("error", "নেটওয়ার্ক ত্রুটি", "ইন্টারনেট সংযোগ চেক করুন অথবা আবার স্ক্যান করুন।");
         playSound("error");
         addHistory(studentId, "Network Error", "error");
+      } finally {
+        setTimeout(() => {
+          isSending = false;
+        }, 1200);
       }
     }
 
     function onScanSuccess(decodedText) {
+      if (isSending) return;
+
       const studentId = (decodedText || "").trim();
       if (!studentId) return;
 
-      const now = Date.now();
-      if (studentId === lastScannedId && now - lastScanTime < 2500) {
-        return;
-      }
-      lastScannedId = studentId;
-      lastScanTime = now;
-
-      if (scannedTodaySet.has(studentId)) {
-        setStatus("warn", `আজ ইতিমধ্যে স্ক্যান হয়েছে: ${studentId}`, "একই আইডি আজ আবার স্ক্যান করা হয়েছে।");
+      const todaySet = getTodayScannedIds();
+      if (todaySet.has(studentId)) {
+        const now = Date.now();
+        if (studentId === lastWarnId && now - lastWarnTime < 4000) {
+          return;
+        }
+        lastWarnId = studentId;
+        lastWarnTime = now;
+        setStatus("warn", `আজ ইতিমধ্যে স্ক্যান হয়েছে: ${studentId}`, "একটি QR দিনে একবারই স্ক্যান হবে।");
         playSound("warn");
-        addHistory(studentId, "Already scanned today", "warn");
         return;
       }
 
