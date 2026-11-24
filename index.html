@@ -114,6 +114,11 @@
       border-color: #86efac;
       color: #166534;
     }
+    .status-box.warn {
+      background: #ffedd5;
+      border-color: #fdba74;
+      color: #9a3412;
+    }
     .status-box.error {
       background: #fee2e2;
       border-color: #fca5a5;
@@ -165,6 +170,14 @@
       font-size: 11px;
       font-weight: 700;
     }
+    .badge-warn {
+      background: #ea580c;
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
     .badge-other {
       background: #475569;
       color: #fff;
@@ -210,23 +223,45 @@
 
     let html5QrCode = null;
     let isScanning = false;
+    const scannedTodaySet = new Set();
     let lastScannedId = "";
     let lastScanTime = 0;
 
-    function playBeep(isSuccess = true) {
+    function playSound(type = "success") {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = isSuccess ? 880 : 300;
-        gain.gain.value = 0.1;
-        osc.start();
-        setTimeout(() => {
-          osc.stop();
-          ctx.close();
-        }, 160);
+
+        if (type === "success") {
+          // মিষ্টি ডাবল-বিপ সাউন্ড
+          const notes = [880, 1174.66];
+          notes.forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = "sine";
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = freq;
+            gain.gain.value = 0.14;
+            const start = ctx.currentTime + i * 0.11;
+            osc.start(start);
+            osc.stop(start + 0.1);
+          });
+          setTimeout(() => ctx.close(), 350);
+        } else {
+          // সতর্কতা/এরর বিপ
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "triangle";
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.value = 280;
+          gain.gain.value = 0.14;
+          osc.start();
+          setTimeout(() => {
+            osc.stop();
+            ctx.close();
+          }, 220);
+        }
       } catch (e) {}
     }
 
@@ -236,12 +271,11 @@
       box.innerHTML = `<div class="status-title">${title}</div><div class="status-sub">${sub || ""}</div>`;
     }
 
-    function addHistory(studentId, responseText) {
+    function addHistory(studentId, responseText, kind = "other") {
       const list = document.getElementById("historyList");
       const nowTime = new Date().toLocaleTimeString("bn-BD", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      const isSuccess = responseText.toLowerCase().includes("success");
-      const badgeClass = isSuccess ? "badge-p" : "badge-other";
-      const label = isSuccess ? (responseText.includes("marked as P") ? "Present (P)" : "Recorded") : responseText;
+      const badgeClass = kind === "success" ? "badge-p" : kind === "warn" ? "badge-warn" : "badge-other";
+      const label = kind === "success" ? "Present (P)" : kind === "warn" ? "Already Scanned" : responseText;
 
       const li = document.createElement("li");
       li.className = "history-item";
@@ -259,19 +293,27 @@
         const url = `${WEB_APP_URL}?id=${encodeURIComponent(studentId)}`;
         const res = await fetch(url, { method: "GET" });
         const text = (await res.text()).trim();
+        const lower = text.toLowerCase();
 
-        if (text.toLowerCase().includes("success")) {
+        if (lower.includes("already scanned today")) {
+          scannedTodaySet.add(studentId);
+          setStatus("warn", `আজ ইতিমধ্যে স্ক্যান হয়েছে: ${studentId}`, "একটি QR দিনে একবারই গণ্য হয়।");
+          playSound("warn");
+          addHistory(studentId, text, "warn");
+        } else if (lower.includes("success")) {
+          scannedTodaySet.add(studentId);
           setStatus("success", `হাজিরা সম্পন্ন: ${studentId}`, text);
-          playBeep(true);
+          playSound("success");
+          addHistory(studentId, text, "success");
         } else {
           setStatus("error", `সমস্যা: ${studentId}`, text);
-          playBeep(false);
+          playSound("error");
+          addHistory(studentId, text, "error");
         }
-        addHistory(studentId, text);
       } catch (err) {
         setStatus("error", "নেটওয়ার্ক ত্রুটি", "ইন্টারনেট সংযোগ চেক করুন অথবা আবার স্ক্যান করুন।");
-        playBeep(false);
-        addHistory(studentId, "Network Error");
+        playSound("error");
+        addHistory(studentId, "Network Error", "error");
       }
     }
 
@@ -280,12 +322,19 @@
       if (!studentId) return;
 
       const now = Date.now();
-      if (studentId === lastScannedId && now - lastScanTime < 3000) {
+      if (studentId === lastScannedId && now - lastScanTime < 2500) {
+        return;
+      }
+      lastScannedId = studentId;
+      lastScanTime = now;
+
+      if (scannedTodaySet.has(studentId)) {
+        setStatus("warn", `আজ ইতিমধ্যে স্ক্যান হয়েছে: ${studentId}`, "একই আইডি আজ আবার স্ক্যান করা হয়েছে।");
+        playSound("warn");
+        addHistory(studentId, "Already scanned today", "warn");
         return;
       }
 
-      lastScannedId = studentId;
-      lastScanTime = now;
       sendAttendance(studentId);
     }
 
@@ -300,7 +349,6 @@
           return;
         }
 
-        // প্রথমে একবার পারমিশন চেয়ে লেবেল আনলক করা
         const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         tempStream.getTracks().forEach(t => t.stop());
 
@@ -320,7 +368,6 @@
           select.appendChild(opt);
         });
 
-        // মোবাইলে পেছনের (back/environment) ক্যামেরা থাকলে সেটি আগে সিলেক্ট করা
         const backCam = devices.find(d => (d.label || "").toLowerCase().match(/back|rear|environment/));
         if (backCam) {
           select.value = backCam.id;
@@ -337,11 +384,9 @@
       if (isScanning) return;
 
       const select = document.getElementById("cameraSelect");
-      const cameraId = select.value;
-
-      if (!cameraId) {
+      if (!select.value) {
         await loadCameras();
-        if (!document.getElementById("cameraSelect").value) return;
+        if (!select.value) return;
       }
 
       if (!html5QrCode) {
@@ -351,7 +396,7 @@
       try {
         setStatus("loading", "ক্যামেরা চালু হচ্ছে...", "অনুগ্রহ করে অপেক্ষা করুন...");
         await html5QrCode.start(
-          document.getElementById("cameraSelect").value,
+          select.value,
           { fps: 10, qrbox: { width: 220, height: 220 } },
           onScanSuccess,
           () => {}
