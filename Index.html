@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Attendance Scanner - Brilliant Private Center</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 16px;
+      background: #f1f5f9;
+      color: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 480px;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      text-align: center;
+      color: #1e293b;
+    }
+    .subtitle {
+      margin: 0 0 14px;
+      font-size: 13px;
+      text-align: center;
+      color: #64748b;
+    }
+    .camera-select-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    select {
+      flex: 1;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      font-size: 13px;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    #reader {
+      width: 100%;
+      min-height: 240px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #e2e8f0;
+      background: #0f172a;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      flex: 1;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn-start {
+      background: #16a34a;
+      color: #fff;
+    }
+    .btn-start:hover {
+      background: #15803d;
+    }
+    .btn-stop {
+      background: #dc2626;
+      color: #fff;
+    }
+    .btn-stop:hover {
+      background: #b91c1c;
+    }
+    .btn-refresh {
+      flex: 0 0 auto;
+      background: #e2e8f0;
+      color: #1e293b;
+      padding: 9px 12px;
+      font-size: 13px;
+    }
+    .status-box {
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      text-align: center;
+      min-height: 68px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .status-box.success {
+      background: #dcfce7;
+      border-color: #86efac;
+      color: #166534;
+    }
+    .status-box.error {
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #991b1b;
+    }
+    .status-box.loading {
+      background: #fef9c3;
+      border-color: #fde047;
+      color: #854d0e;
+    }
+    .status-title {
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .status-sub {
+      font-size: 12px;
+      margin-top: 4px;
+      opacity: 0.9;
+      word-break: break-word;
+    }
+    .history {
+      margin-top: 18px;
+    }
+    .history h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: #334155;
+    }
+    .history-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+    }
+    .badge-p {
+      background: #16a34a;
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-other {
+      background: #475569;
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>কিউআর হাজিরা স্ক্যানার</h1>
+    <p class="subtitle">ক্যামেরা সিলেক্ট করে শিক্ষার্থীর আইডি কার্ডের QR কোড ধরুন</p>
+
+    <div class="camera-select-row">
+      <select id="cameraSelect">
+        <option value="">ক্যামেরা খোঁজা হচ্ছে...</option>
+      </select>
+      <button type="button" class="btn-refresh" onclick="loadCameras()">রিফ্রেশ</button>
+    </div>
+
+    <div id="reader"></div>
+
+    <div class="controls">
+      <button id="startBtn" class="btn-start" onclick="startScanner()">ক্যামেরা চালু করুন</button>
+      <button id="stopBtn" class="btn-stop" onclick="stopScanner()" disabled>বন্ধ করুন</button>
+    </div>
+
+    <div id="statusBox" class="status-box">
+      <div class="status-title">প্রস্তুত</div>
+      <div class="status-sub">ক্যামেরা চালু করে স্ক্যান করুন...</div>
+    </div>
+
+    <div class="history">
+      <h3>সাম্প্রতিক হাজিরা</h3>
+      <ul id="historyList" class="history-list"></ul>
+    </div>
+  </div>
+
+  <script>
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyzdetE7jruLPaRSABrUjIWqbBe1jfi5FHU8sGqdMNdfK7FlM2aqdEP1jCBAebu7uX5/exec";
+
+    let html5QrCode = null;
+    let isScanning = false;
+    let lastScannedId = "";
+    let lastScanTime = 0;
+
+    function playBeep(isSuccess = true) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = isSuccess ? 880 : 300;
+        gain.gain.value = 0.1;
+        osc.start();
+        setTimeout(() => {
+          osc.stop();
+          ctx.close();
+        }, 160);
+      } catch (e) {}
+    }
+
+    function setStatus(type, title, sub) {
+      const box = document.getElementById("statusBox");
+      box.className = "status-box " + (type || "");
+      box.innerHTML = `<div class="status-title">${title}</div><div class="status-sub">${sub || ""}</div>`;
+    }
+
+    function addHistory(studentId, responseText) {
+      const list = document.getElementById("historyList");
+      const nowTime = new Date().toLocaleTimeString("bn-BD", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const isSuccess = responseText.toLowerCase().includes("success");
+      const badgeClass = isSuccess ? "badge-p" : "badge-other";
+      const label = isSuccess ? (responseText.includes("marked as P") ? "Present (P)" : "Recorded") : responseText;
+
+      const li = document.createElement("li");
+      li.className = "history-item";
+      li.innerHTML = `
+        <span><strong>${studentId}</strong> <small style="color:#64748b;">(${nowTime})</small></span>
+        <span class="${badgeClass}">${label}</span>
+      `;
+      list.prepend(li);
+    }
+
+    async function sendAttendance(studentId) {
+      setStatus("loading", `পাঠানো হচ্ছে: ${studentId}`, "Google Sheets আপডেট হচ্ছে...");
+
+      try {
+        const url = `${WEB_APP_URL}?id=${encodeURIComponent(studentId)}`;
+        const res = await fetch(url, { method: "GET" });
+        const text = (await res.text()).trim();
+
+        if (text.toLowerCase().includes("success")) {
+          setStatus("success", `হাজিরা সম্পন্ন: ${studentId}`, text);
+          playBeep(true);
+        } else {
+          setStatus("error", `সমস্যা: ${studentId}`, text);
+          playBeep(false);
+        }
+        addHistory(studentId, text);
+      } catch (err) {
+        setStatus("error", "নেটওয়ার্ক ত্রুটি", "ইন্টারনেট সংযোগ চেক করুন অথবা আবার স্ক্যান করুন।");
+        playBeep(false);
+        addHistory(studentId, "Network Error");
+      }
+    }
+
+    function onScanSuccess(decodedText) {
+      const studentId = (decodedText || "").trim();
+      if (!studentId) return;
+
+      const now = Date.now();
+      if (studentId === lastScannedId && now - lastScanTime < 3000) {
+        return;
+      }
+
+      lastScannedId = studentId;
+      lastScanTime = now;
+      sendAttendance(studentId);
+    }
+
+    async function loadCameras() {
+      const select = document.getElementById("cameraSelect");
+      select.innerHTML = `<option value="">ক্যামেরা খোঁজা হচ্ছে...</option>`;
+
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          select.innerHTML = `<option value="">ক্যামেরা API সাপোর্ট করছে না</option>`;
+          setStatus("error", "ক্যামেরা সাপোর্ট পাওয়া যায়নি", "HTTPS লিংক বা আধুনিক ব্রাউজার (Chrome/Edge) ব্যবহার করুন।");
+          return;
+        }
+
+        // প্রথমে একবার পারমিশন চেয়ে লেবেল আনলক করা
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        tempStream.getTracks().forEach(t => t.stop());
+
+        const devices = await Html5Qrcode.getCameras();
+        select.innerHTML = "";
+
+        if (!devices || devices.length === 0) {
+          select.innerHTML = `<option value="">কোনো ক্যামেরা পাওয়া যায়নি</option>`;
+          setStatus("error", "কোনো ক্যামেরা পাওয়া যায়নি", "ডিভাইসে ক্যামেরা সংযুক্ত আছে কি না চেক করুন।");
+          return;
+        }
+
+        devices.forEach((cam, idx) => {
+          const opt = document.createElement("option");
+          opt.value = cam.id;
+          opt.textContent = cam.label || `Camera ${idx + 1}`;
+          select.appendChild(opt);
+        });
+
+        // মোবাইলে পেছনের (back/environment) ক্যামেরা থাকলে সেটি আগে সিলেক্ট করা
+        const backCam = devices.find(d => (d.label || "").toLowerCase().match(/back|rear|environment/));
+        if (backCam) {
+          select.value = backCam.id;
+        }
+
+        setStatus("", "ক্যামেরা প্রস্তুত", "‘ক্যামেরা চালু করুন’ বাটনে চাপুন।");
+      } catch (err) {
+        select.innerHTML = `<option value="">ক্যামেরা অনুমতি প্রয়োজন</option>`;
+        setStatus("error", "ক্যামেরার অনুমতি দেওয়া হয়নি", err && err.message ? err.message : "ব্রাউজারের Camera Permission Allow করুন।");
+      }
+    }
+
+    async function startScanner() {
+      if (isScanning) return;
+
+      const select = document.getElementById("cameraSelect");
+      const cameraId = select.value;
+
+      if (!cameraId) {
+        await loadCameras();
+        if (!document.getElementById("cameraSelect").value) return;
+      }
+
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      }
+
+      try {
+        setStatus("loading", "ক্যামেরা চালু হচ্ছে...", "অনুগ্রহ করে অপেক্ষা করুন...");
+        await html5QrCode.start(
+          document.getElementById("cameraSelect").value,
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          onScanSuccess,
+          () => {}
+        );
+        isScanning = true;
+        document.getElementById("startBtn").disabled = true;
+        document.getElementById("stopBtn").disabled = false;
+        setStatus("", "ক্যামেরা চালু আছে", "QR কোড স্ক্যান করুন");
+      } catch (err) {
+        setStatus("error", "ক্যামেরা চালু করা যায়নি", err && err.message ? err.message : "অন্য কোনো অ্যাপ ক্যামেরা ব্যবহার করছে কি না দেখুন।");
+      }
+    }
+
+    async function stopScanner() {
+      if (!html5QrCode || !isScanning) return;
+      try {
+        await html5QrCode.stop();
+        isScanning = false;
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("stopBtn").disabled = true;
+        setStatus("", "ক্যামেরা বন্ধ", "আবার শুরু করতে বাটনে ক্লিক করুন");
+      } catch (err) {}
+    }
+
+    window.addEventListener("load", () => {
+      loadCameras();
+    });
+  </script>
+</body>
+</html>
